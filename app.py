@@ -16,6 +16,7 @@ from extractors.image_extractor import ImageExtractor
 from utils.pdf_utils import get_pdf_metadata, is_scanned_pdf
 from utils.file_handler import allowed_file, save_uploaded_file
 from utils.record_parser import parse_elector_records
+from utils.elector_summary import extract_elector_summary
 from utils.supabase_store import SupabaseStore
 import pandas as pd
 
@@ -233,6 +234,9 @@ def _run_extraction(job_id, filepath, filename, options):
         try:
             text_result = results.get('extractions', {}).get('text', {})
             pages = text_result.get('pages', [])
+            summary = extract_elector_summary(pages)
+            if summary:
+                results['extractions']['elector_summary'] = summary
             ai_records = text_result.get('records', {})
             if ai_records.get('records'):
                 JOBS[job_id]['message'] = 'Using AI parsed records'

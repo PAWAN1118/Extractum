@@ -102,7 +102,9 @@ class AIOCRExtractor:
     def _extract_page_with_gemini(self, image_b64: str, page_num: int) -> Dict:
         prompt = (
             "You are extracting data from a scanned Indian electoral roll PDF page. "
-            "Return valid JSON only, with no markdown. Use this exact schema: "
+            "Extract every visible voter/elector entry on the page, including entries in all columns. "
+            "Do not summarize, skip, or sample records. Return valid JSON only, with no markdown. "
+            "Use this exact schema: "
             '{"text":"full readable page text with line breaks",'
             '"records":[{"serial_no":null,"epic_id":"","name":"","relation_type":"",'
             '"relation_name":"","house_number":"","age":null,"gender":""}]}. '

@@ -182,10 +182,14 @@ function App() {
   const summary = useMemo(() => {
     const textPages = results?.extractions?.text?.total_pages || 0;
     const chars = (results?.extractions?.text?.pages || []).reduce((sum, page) => sum + Number(page.char_count || 0), 0);
+    const electorTotal = results?.extractions?.elector_summary?.total_voters || 0;
+    const parsedRecords = results?.extractions?.records?.total_records || 0;
     return {
       pages: results?.metadata?.total_pages || textPages || 0,
       chars: chars.toLocaleString(),
-      records: results?.extractions?.records?.total_records || 0,
+      records: electorTotal || parsedRecords,
+      parsedRecords,
+      electorTotal,
       tables: results?.extractions?.tables?.total_tables || 0,
       time: results?.timing_ms?.total ? `${(results.timing_ms.total / 1000).toFixed(1)}s` : "N/A",
     };
@@ -543,7 +547,7 @@ function Results({ results, summary, activeTab, setActiveTab, exportData }) {
       <div className="metrics">
         <Metric label="Pages" value={summary.pages} />
         <Metric label="Chars" value={summary.chars} />
-        <Metric label="Records" value={summary.records} />
+        <Metric label={summary.electorTotal ? "Voters" : "Records"} value={summary.records} />
         <Metric label="Tables" value={summary.tables} />
         <Metric label="Time" value={summary.time} />
       </div>
@@ -657,16 +661,22 @@ function DonutChart({ title, subtitle, data }) {
 function VisualsView({ results }) {
   const pages = results.extractions?.text?.pages || [];
   const records = results.extractions?.records?.records || [];
+  const electorTotal = Number(results.extractions?.elector_summary?.total_voters || 0);
   const tables = results.extractions?.tables?.tables || [];
   const images = results.extractions?.images?.images || [];
   const timing = results.timing_ms || {};
 
   const composition = [
     { label: "Text pages", value: pages.length, color: "#0645b8" },
-    { label: "Records", value: records.length, color: "#16a34a" },
+    { label: electorTotal ? "Voters in roll" : "Records", value: electorTotal || records.length, color: "#16a34a" },
     { label: "Tables", value: tables.length, color: "#f59e0b" },
     { label: "Images", value: images.length, color: "#64748b" },
   ];
+
+  const coverageData = electorTotal ? [
+    { label: "Parsed this run", value: records.length, display: records.length.toLocaleString() },
+    { label: "Remaining in roll", value: Math.max(electorTotal - records.length, 0), display: Math.max(electorTotal - records.length, 0).toLocaleString() },
+  ] : [];
 
   const timingData = Object.entries(timing)
     .filter(([key, value]) => key !== "total" && Number(value) > 0)
@@ -737,6 +747,9 @@ function VisualsView({ results }) {
   return (
     <div className="visual-grid">
       <DonutChart title="Extraction mix" subtitle="What was found in this run" data={composition} />
+      {coverageData.length > 0 && (
+        <BarChart title="Voter coverage" subtitle="Official roll total vs parsed rows in this extraction" data={coverageData} />
+      )}
       <BarChart title="Processing time" subtitle="Which stage took the longest" data={timingData.length ? timingData : [{ label: "TOTAL", value: timing.total || 0, display: `${((timing.total || 0) / 1000).toFixed(2)}s` }]} />
       {pageChars.length > 0 && (
         <BarChart title="Text density" subtitle="Character count by page, first 12 pages" data={pageChars} />
