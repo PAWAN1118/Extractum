@@ -96,6 +96,24 @@ def _extraction_options(form):
     }
 
 
+def _limit_ocr_range(page_from, page_to, total_pages):
+    max_pages = max(1, int(app.config.get('OCR_MAX_PAGES', 25)))
+    start = max(1, int(page_from)) if page_from else 1
+    requested_end = min(total_pages, int(page_to)) if page_to else total_pages
+    requested_end = max(start, requested_end)
+    capped_end = min(requested_end, start + max_pages - 1)
+
+    warning = None
+    if capped_end < requested_end:
+        warning = (
+            f'OCR was limited to pages {start}-{capped_end} in this run. '
+            f'Set the next range to {capped_end + 1}-{min(total_pages, capped_end + max_pages)} '
+            f'to continue. Max OCR pages per run: {max_pages}.'
+        )
+
+    return start, capped_end, warning
+
+
 def _run_extraction(job_id, filepath, filename, options):
     started_at = time.time()
     JOBS[job_id] = {
@@ -126,13 +144,12 @@ def _run_extraction(job_id, filepath, filename, options):
             'storage': {},
         }
 
-        if options['use_ocr'] and not page_from and not page_to and metadata.get('total_pages', 0) > 10:
-            page_from = 1
-            page_to = 10
+        if options['use_ocr']:
+            total_pages = metadata.get('total_pages', 0) or 1
+            page_from, page_to, range_warning = _limit_ocr_range(page_from, page_to, total_pages)
             results['page_range'] = {'from': page_from, 'to': page_to}
-            results['warnings'].append(
-                'OCR was limited to pages 1-10 for speed. Set a page range if you need different pages.'
-            )
+            if range_warning:
+                results['warnings'].append(range_warning)
 
         if options['extract_text']:
             try:
@@ -142,10 +159,9 @@ def _run_extraction(job_id, filepath, filename, options):
                     t0 = time.time()
                     try:
                         def update_ocr_progress(page_num, document_pages):
-                            if document_pages:
-                                JOBS[job_id]['message'] = f'OCR page {page_num} of {document_pages}'
-                            else:
-                                JOBS[job_id]['message'] = f'OCR page {page_num}'
+                            selected_total = max(1, page_to - page_from + 1)
+                            selected_index = max(1, page_num - page_from + 1)
+                            JOBS[job_id]['message'] = f'OCR page {page_num} ({selected_index} of {selected_total})'
 
                         results['extractions']['text'] = ocr_extractor.extract_text_ocr(
                             dpi=options['ocr_dpi'],
