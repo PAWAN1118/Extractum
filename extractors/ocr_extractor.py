@@ -112,6 +112,21 @@ class OCRExtractor:
             yield page_num, image, total_pages
             image.close()
 
+    def _prepare_for_tesseract(self, image, max_pixels: int = 6_000_000):
+        from PIL import Image, ImageOps
+
+        image = image.convert("L")
+        width, height = image.size
+        pixels = width * height
+
+        if pixels > max_pixels:
+            scale = (max_pixels / pixels) ** 0.5
+            next_size = (max(1, int(width * scale)), max(1, int(height * scale)))
+            image = image.resize(next_size, Image.Resampling.LANCZOS)
+
+        image = ImageOps.autocontrast(image)
+        return image.point(lambda value: 255 if value > 175 else 0, mode="1")
+
     def _pdf_to_images(self, dpi: int = 300, page_from: int | None = None, page_to: int | None = None):
         """
         Convert PDF pages to PIL Images.
@@ -158,6 +173,8 @@ class OCRExtractor:
         page_from: int | None = None,
         page_to: int | None = None,
         page_timeout: int = 90,
+        tesseract_config: str = "--oem 1 --psm 6",
+        max_image_pixels: int = 6_000_000,
         progress_callback: Callable[[int, int | None], None] | None = None,
     ) -> Dict:
         """Extract text using OCR (for scanned PDFs)"""
@@ -176,11 +193,18 @@ class OCRExtractor:
             if progress_callback:
                 progress_callback(page_num, document_pages)
 
+            prepared = self._prepare_for_tesseract(image, max_pixels=max_image_pixels)
             try:
-                text = pytesseract.image_to_string(image, timeout=page_timeout)
+                text = pytesseract.image_to_string(
+                    prepared,
+                    config=tesseract_config,
+                    timeout=page_timeout,
+                )
             except RuntimeError as error:
                 text = ""
                 warnings.append(f"OCR skipped page {page_num}: {error}")
+            finally:
+                prepared.close()
             
             ocr_data.append({
                 'page': page_num,
@@ -202,6 +226,7 @@ class OCRExtractor:
         page_from: int | None = None,
         page_to: int | None = None,
         page_timeout: int = 90,
+        max_image_pixels: int = 6_000_000,
     ) -> Dict:
         """Extract with custom Tesseract config"""
         pytesseract = self._configure_tesseract()
@@ -216,11 +241,14 @@ class OCRExtractor:
             total_pages = document_pages
             start = page_num if start is None else start
             end = page_num
+            prepared = self._prepare_for_tesseract(image, max_pixels=max_image_pixels)
             try:
-                text = pytesseract.image_to_string(image, config=config, timeout=page_timeout)
+                text = pytesseract.image_to_string(prepared, config=config, timeout=page_timeout)
             except RuntimeError as error:
                 text = ""
                 warnings.append(f"OCR skipped page {page_num}: {error}")
+            finally:
+                prepared.close()
             
             ocr_data.append({
                 'page': page_num,

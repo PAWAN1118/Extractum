@@ -168,6 +168,8 @@ def _run_extraction(job_id, filepath, filename, options):
                             page_from=page_from,
                             page_to=page_to,
                             page_timeout=app.config['TESSERACT_PAGE_TIMEOUT'],
+                            tesseract_config=app.config['OCR_TESSERACT_CONFIG'],
+                            max_image_pixels=app.config['OCR_MAX_IMAGE_PIXELS'],
                             progress_callback=update_ocr_progress,
                         )
                         results['warnings'].extend(results['extractions']['text'].get('warnings', []))
