@@ -12,7 +12,7 @@ class SupabaseStore:
     """Small Supabase REST client for result persistence without extra deps."""
 
     def __init__(self) -> None:
-        self.url = (os.environ.get("SUPABASE_URL") or "").rstrip("/")
+        self.url = self._normalize_url(os.environ.get("SUPABASE_URL") or "")
         self.key = (
             os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
             or os.environ.get("SUPABASE_KEY")
@@ -111,3 +111,11 @@ class SupabaseStore:
     @staticmethod
     def _safe_name(filename: str) -> str:
         return re.sub(r"[^A-Za-z0-9_.-]+", "-", filename).strip("-") or "document"
+
+    @staticmethod
+    def _normalize_url(url: str) -> str:
+        url = (url or "").strip().rstrip("/")
+        for suffix in ("/rest/v1", "/storage/v1", "/dashboard"):
+            if url.endswith(suffix):
+                return url[: -len(suffix)].rstrip("/")
+        return url
