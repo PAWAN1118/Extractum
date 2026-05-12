@@ -1,4 +1,5 @@
 from flask import Flask, render_template, request, jsonify, send_file, send_from_directory, after_this_request
+from werkzeug.exceptions import RequestEntityTooLarge
 import os
 import json
 import time
@@ -38,6 +39,11 @@ def check():
         })
     except Exception as e:
         return jsonify({'error': str(e)})
+
+@app.errorhandler(RequestEntityTooLarge)
+def file_too_large(error):
+    max_mb = app.config['MAX_CONTENT_LENGTH'] // (1024 * 1024)
+    return jsonify({'error': f'File is too large. Upload PDFs up to {max_mb} MB, or split the PDF into smaller page ranges.'}), 413
 @app.route('/')
 def index():
     react_index = os.path.join(FRONTEND_DIST, 'index.html')

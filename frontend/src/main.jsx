@@ -233,7 +233,11 @@ function App() {
   }, [file, options]);
 
   function setOption(key, value) {
-    setOptions((current) => ({ ...current, [key]: value }));
+    setOptions((current) => ({
+      ...current,
+      [key]: value,
+      ...(key === "use_ocr" && value ? { extract_text: true } : {}),
+    }));
   }
 
   function applyPreset(preset) {
@@ -255,7 +259,8 @@ function App() {
   function buildFormData() {
     const formData = new FormData();
     formData.append("file", file);
-    Object.entries(options).forEach(([key, value]) => {
+    const submitOptions = options.use_ocr ? { ...options, extract_text: true } : options;
+    Object.entries(submitOptions).forEach(([key, value]) => {
       if (typeof value === "boolean") {
         formData.append(key, value ? "true" : "false");
       } else if (String(value).trim()) {
@@ -287,7 +292,7 @@ function App() {
         method: "POST",
         body: buildFormData(),
       });
-      const data = await response.json();
+      const data = await readJsonResponse(response);
       if (!response.ok) throw new Error(data.error || "Extraction failed");
 
       const finalData = data.job_id ? await pollJob(data.job_id) : data;
@@ -309,7 +314,7 @@ function App() {
 
     while (Date.now() - started < 20 * 60 * 1000) {
       const response = await fetch(`/jobs/${encodeURIComponent(jobId)}`);
-      const job = await response.json();
+      const job = await readJsonResponse(response);
       if (!response.ok) throw new Error(job.error || "Could not read extraction job");
 
       if (job.message) setStatus(job.message);
@@ -320,6 +325,21 @@ function App() {
     }
 
     throw new Error("Extraction is taking longer than expected. Try a smaller page range or disable OCR/images.");
+  }
+
+  async function readJsonResponse(response) {
+    const text = await response.text();
+    if (!text) return {};
+
+    try {
+      return JSON.parse(text);
+    } catch {
+      return {
+        error: response.status === 413
+          ? "File is too large for this server. Try fewer pages, split the PDF, or raise MAX_CONTENT_LENGTH."
+          : text.slice(0, 240),
+      };
+    }
   }
 
   async function exportData(format) {
