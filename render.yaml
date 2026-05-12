@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: pdf-extractor
+    env: python
+    region: singapore
+    plan: free
+    branch: main
+    buildCommand: "chmod +x build.sh && ./build.sh"
+    startCommand: "gunicorn --workers 1 --threads 4 --timeout 300 app:app"
+    envVars:
+      - key: UPLOAD_FOLDER
+        value: /tmp/uploads
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_RESULTS_TABLE
+        value: extraction_results
+      - key: SUPABASE_STORAGE_BUCKET
+        sync: false
+    nativeEnvironments:
+      - tesseract-ocr
+      - poppler-utils

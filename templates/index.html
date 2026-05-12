@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Data Extractor</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css', v=asset_version) }}">
+</head>
+<body>
+    <main class="app-shell">
+        <section class="workspace">
+            <aside class="control-panel" aria-label="Extraction controls">
+                <div class="brand-row">
+                    <div class="brand-mark" aria-hidden="true">
+                        <span></span>
+                    </div>
+                    <div>
+                        <p class="eyebrow">Document intelligence</p>
+                        <h1>PDF Data Extractor</h1>
+                    </div>
+                </div>
+
+                <form id="uploadForm" class="extract-form" enctype="multipart/form-data">
+                    <label class="drop-zone" id="dropZone" for="pdfFile">
+                        <input type="file" id="pdfFile" name="file" accept=".pdf" required>
+                        <span class="drop-icon" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" focusable="false">
+                                <path d="M12 3v11m0-11 4 4m-4-4-4 4M5 14v4a3 3 0 0 0 3 3h8a3 3 0 0 0 3-3v-4"/>
+                            </svg>
+                        </span>
+                        <span id="fileName" class="file-name">Drop a PDF here or browse</span>
+                        <span id="fileMeta" class="file-meta">Up to 50 MB, PDF only</span>
+                    </label>
+
+                    <div class="option-block">
+                        <div class="section-heading">
+                            <h2>Extraction Mode</h2>
+                            <p>Choose the data types you want in the output.</p>
+                        </div>
+
+                        <div class="toggle-grid">
+                            <label class="toggle-card">
+                                <input type="checkbox" name="extract_text" checked>
+                                <span class="toggle-ui"></span>
+                                <span>
+                                    <strong>Text</strong>
+                                    <small>Page content and character counts</small>
+                                </span>
+                            </label>
+
+                            <label class="toggle-card">
+                                <input type="checkbox" name="extract_tables">
+                                <span class="toggle-ui"></span>
+                                <span>
+                                    <strong>Tables</strong>
+                                    <small>Slower scan for tabular PDFs</small>
+                                </span>
+                            </label>
+
+                            <label class="toggle-card">
+                                <input type="checkbox" name="extract_images">
+                                <span class="toggle-ui"></span>
+                                <span>
+                                    <strong>Images</strong>
+                                    <small>Embedded assets and dimensions</small>
+                                </span>
+                            </label>
+
+                            <label class="toggle-card">
+                                <input type="checkbox" name="use_ocr">
+                                <span class="toggle-ui"></span>
+                                <span>
+                                    <strong>OCR</strong>
+                                    <small>Use for scanned documents</small>
+                                </span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="option-block">
+                        <div class="section-heading">
+                            <h2>Page Range (optional)</h2>
+                            <p>Speed up extraction for large PDFs by limiting pages.</p>
+                        </div>
+
+                        <div class="range-row" role="group" aria-label="Page range">
+                            <label class="range-field">
+                                <span>From</span>
+                                <input type="number" name="page_from" min="1" inputmode="numeric" placeholder="1">
+                            </label>
+                            <label class="range-field">
+                                <span>To</span>
+                                <input type="number" name="page_to" min="1" inputmode="numeric" placeholder="49">
+                            </label>
+                        </div>
+                        <p class="hint">Leave empty to process all pages.</p>
+                    </div>
+
+                    <div class="option-block">
+                        <div class="section-heading">
+                            <h2>Performance</h2>
+                            <p>Use lower OCR quality for faster scanned PDF processing.</p>
+                        </div>
+
+                        <label class="range-field">
+                            <span>OCR Quality</span>
+                            <select name="ocr_dpi">
+                                <option value="150" selected>Fast - 150 DPI</option>
+                                <option value="200">Balanced - 200 DPI</option>
+                                <option value="300">High - 300 DPI</option>
+                            </select>
+                        </label>
+                        <p class="hint">Tables, images, and OCR are the slowest options.</p>
+                    </div>
+
+                    <button type="submit" class="primary-action" id="submitBtn">
+                        <span id="btnText">Extract Data</span>
+                        <span id="btnLoader" class="loader" hidden></span>
+                    </button>
+                </form>
+
+                <div class="status-card" id="statusCard">
+                    <span class="status-dot"></span>
+                    <span id="statusText">Ready for a PDF.</span>
+                </div>
+            </aside>
+
+            <section class="results-panel" aria-live="polite">
+                <div class="results-empty" id="emptyState">
+                    <div class="empty-visual" aria-hidden="true">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                    </div>
+                    <h2>Your extraction workspace is ready</h2>
+                    <p>Upload a document and the extracted text, tables, metadata, and image assets will appear here.</p>
+                </div>
+
+                <div id="results" class="results-section" hidden>
+                    <div class="results-header">
+                        <div>
+                            <p class="eyebrow">Extraction results</p>
+                            <h2 id="resultTitle">Document summary</h2>
+                        </div>
+                        <div class="export-group" aria-label="Export results">
+                            <button type="button" class="secondary-action" data-export="json">JSON</button>
+                            <button type="button" class="secondary-action" data-export="excel">Excel</button>
+                            <button type="button" class="secondary-action" data-export="csv">CSV</button>
+                        </div>
+                    </div>
+
+                    <div class="summary-grid" id="summaryGrid"></div>
+
+                    <div id="warnings" class="warning-list" hidden></div>
+
+                    <section class="metadata-section">
+                        <div class="section-heading compact">
+                            <h3>Metadata</h3>
+                            <p id="scanStatus">Document profile</p>
+                        </div>
+                        <div id="metadata" class="metadata-grid"></div>
+                    </section>
+
+                    <div class="tabs" role="tablist" aria-label="Extracted data views">
+                        <button class="tab-btn active" type="button" role="tab" aria-selected="true" data-tab="text">Text</button>
+                        <button class="tab-btn" type="button" role="tab" aria-selected="false" data-tab="records">Electors</button>
+                        <button class="tab-btn" type="button" role="tab" aria-selected="false" data-tab="tables">Tables</button>
+                        <button class="tab-btn" type="button" role="tab" aria-selected="false" data-tab="images">Images</button>
+                        <button class="tab-btn" type="button" role="tab" aria-selected="false" data-tab="raw">Raw</button>
+                    </div>
+
+                    <div class="tab-content">
+                        <div id="text-content" class="tab-pane active" role="tabpanel"></div>
+                        <div id="records-content" class="tab-pane" role="tabpanel"></div>
+                        <div id="tables-content" class="tab-pane" role="tabpanel"></div>
+                        <div id="images-content" class="tab-pane" role="tabpanel"></div>
+                        <div id="raw-content" class="tab-pane" role="tabpanel"></div>
+                    </div>
+                </div>
+            </section>
+        </section>
+    </main>
+
+    <script src="{{ url_for('static', filename='js/main.js', v=asset_version) }}"></script>
+</body>
+</html>
