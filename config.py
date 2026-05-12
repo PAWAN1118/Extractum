@@ -33,6 +33,13 @@ class Config:
     AI_OCR_PROVIDER = os.environ.get('AI_OCR_PROVIDER', 'gemini').lower()
     GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
     GEMINI_MODEL = os.environ.get('GEMINI_MODEL', 'gemini-2.5-flash')
+    GEMINI_FALLBACK_MODELS = [
+        model.strip()
+        for model in os.environ.get('GEMINI_FALLBACK_MODELS', 'gemini-2.0-flash,gemini-1.5-flash').split(',')
+        if model.strip()
+    ]
+    GEMINI_MAX_RETRIES = int(os.environ.get('GEMINI_MAX_RETRIES', '4'))
+    GEMINI_RETRY_BACKOFF_SECONDS = float(os.environ.get('GEMINI_RETRY_BACKOFF_SECONDS', '2'))
     AI_OCR_DPI = int(os.environ.get('AI_OCR_DPI', '120'))
     AI_OCR_MAX_IMAGE_PIXELS = int(os.environ.get('AI_OCR_MAX_IMAGE_PIXELS', '4000000'))
 

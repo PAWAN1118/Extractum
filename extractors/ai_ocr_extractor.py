@@ -4,6 +4,7 @@ import base64
 import json
 import os
 import re
+import time
 import urllib.error
 import urllib.request
 from io import BytesIO
@@ -18,11 +19,17 @@ class AIOCRExtractor:
         pdf_path: str,
         provider: str = "gemini",
         model: str = "gemini-2.5-flash",
+        fallback_models: List[str] | None = None,
+        max_retries: int = 4,
+        retry_backoff_seconds: float = 2,
         api_key: str | None = None,
     ):
         self.pdf_path = pdf_path
         self.provider = provider.lower()
         self.model = model
+        self.fallback_models = [item for item in (fallback_models or []) if item and item != model]
+        self.max_retries = max(1, int(max_retries))
+        self.retry_backoff_seconds = max(0.1, float(retry_backoff_seconds))
         self.api_key = api_key or os.environ.get("GEMINI_API_KEY")
         self.renderer = OCRExtractor(pdf_path)
 
@@ -123,9 +130,22 @@ class AIOCRExtractor:
                 "response_mime_type": "application/json",
             },
         }
+        models = [self.model, *self.fallback_models]
+        last_error = None
+        for model in models:
+            try:
+                return self._request_gemini_model(model, body)
+            except RuntimeError as error:
+                last_error = error
+                if "Gemini API error 503" not in str(error) and "Gemini API error 429" not in str(error):
+                    raise
+
+        raise last_error or RuntimeError("Gemini API request failed")
+
+    def _request_gemini_model(self, model: str, body: Dict) -> Dict:
         url = (
             "https://generativelanguage.googleapis.com/v1beta/models/"
-            f"{self.model}:generateContent?key={self.api_key}"
+            f"{model}:generateContent?key={self.api_key}"
         )
         request = urllib.request.Request(
             url,
@@ -133,12 +153,21 @@ class AIOCRExtractor:
             headers={"Content-Type": "application/json"},
             method="POST",
         )
-        try:
-            with urllib.request.urlopen(request, timeout=120) as response:
-                raw = json.loads(response.read().decode("utf-8"))
-        except urllib.error.HTTPError as error:
-            detail = error.read().decode("utf-8", errors="replace")[:500]
-            raise RuntimeError(f"Gemini API error {error.code}: {detail}") from error
+
+        last_error = None
+        for attempt in range(1, self.max_retries + 1):
+            try:
+                with urllib.request.urlopen(request, timeout=120) as response:
+                    raw = json.loads(response.read().decode("utf-8"))
+                break
+            except urllib.error.HTTPError as error:
+                detail = error.read().decode("utf-8", errors="replace")[:500]
+                last_error = RuntimeError(f"Gemini API error {error.code} on {model}: {detail}")
+                if error.code not in (429, 503) or attempt >= self.max_retries:
+                    raise last_error from error
+                time.sleep(self.retry_backoff_seconds * attempt)
+        else:
+            raise last_error or RuntimeError(f"Gemini API error on {model}")
 
         text = (
             raw.get("candidates", [{}])[0]

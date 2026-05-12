@@ -43,6 +43,7 @@ def check():
             'ocr_engine_fallback': app.config['OCR_ENGINE_FALLBACK'],
             'ai_ocr_provider': app.config['AI_OCR_PROVIDER'],
             'gemini_model': app.config['GEMINI_MODEL'],
+            'gemini_fallback_models': app.config['GEMINI_FALLBACK_MODELS'],
             'gemini_api_key_configured': bool(app.config['GEMINI_API_KEY']),
         })
     except Exception as e:
@@ -176,6 +177,9 @@ def _run_extraction(job_id, filepath, filename, options):
                                 filepath,
                                 provider=app.config['AI_OCR_PROVIDER'],
                                 model=app.config['GEMINI_MODEL'],
+                                fallback_models=app.config['GEMINI_FALLBACK_MODELS'],
+                                max_retries=app.config['GEMINI_MAX_RETRIES'],
+                                retry_backoff_seconds=app.config['GEMINI_RETRY_BACKOFF_SECONDS'],
                                 api_key=app.config['GEMINI_API_KEY'],
                             )
                             results['extractions']['text'] = ai_extractor.extract_text_ai(
