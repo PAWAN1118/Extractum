@@ -11,6 +11,7 @@ from config import Config
 from extractors.text_extractor import TextExtractor
 from extractors.table_extractor import TableExtractor
 from extractors.ocr_extractor import OCRExtractor
+from extractors.ai_ocr_extractor import AIOCRExtractor
 from extractors.image_extractor import ImageExtractor
 from utils.pdf_utils import get_pdf_metadata, is_scanned_pdf
 from utils.file_handler import allowed_file, save_uploaded_file
@@ -155,7 +156,6 @@ def _run_extraction(job_id, filepath, filename, options):
             try:
                 JOBS[job_id]['message'] = 'Extracting text'
                 if options['use_ocr']:
-                    ocr_extractor = OCRExtractor(filepath)
                     t0 = time.time()
                     try:
                         def update_ocr_progress(page_num, document_pages):
@@ -163,28 +163,59 @@ def _run_extraction(job_id, filepath, filename, options):
                             selected_index = max(1, page_num - page_from + 1)
                             JOBS[job_id]['message'] = f'OCR page {page_num} ({selected_index} of {selected_total})'
 
-                        results['extractions']['text'] = ocr_extractor.extract_text_ocr(
-                            dpi=options['ocr_dpi'],
-                            page_from=page_from,
-                            page_to=page_to,
-                            page_timeout=app.config['TESSERACT_PAGE_TIMEOUT'],
-                            tesseract_config=app.config['OCR_TESSERACT_CONFIG'],
-                            max_image_pixels=app.config['OCR_MAX_IMAGE_PIXELS'],
-                            progress_callback=update_ocr_progress,
-                        )
+                        if app.config['OCR_ENGINE'] == 'ai':
+                            ai_extractor = AIOCRExtractor(
+                                filepath,
+                                provider=app.config['AI_OCR_PROVIDER'],
+                                model=app.config['GEMINI_MODEL'],
+                                api_key=app.config['GEMINI_API_KEY'],
+                            )
+                            results['extractions']['text'] = ai_extractor.extract_text_ai(
+                                dpi=app.config['AI_OCR_DPI'],
+                                page_from=page_from,
+                                page_to=page_to,
+                                max_image_pixels=app.config['AI_OCR_MAX_IMAGE_PIXELS'],
+                                progress_callback=update_ocr_progress,
+                            )
+                        else:
+                            ocr_extractor = OCRExtractor(filepath)
+                            results['extractions']['text'] = ocr_extractor.extract_text_ocr(
+                                dpi=options['ocr_dpi'],
+                                page_from=page_from,
+                                page_to=page_to,
+                                page_timeout=app.config['TESSERACT_PAGE_TIMEOUT'],
+                                tesseract_config=app.config['OCR_TESSERACT_CONFIG'],
+                                max_image_pixels=app.config['OCR_MAX_IMAGE_PIXELS'],
+                                progress_callback=update_ocr_progress,
+                            )
                         results['warnings'].extend(results['extractions']['text'].get('warnings', []))
                         results['timing_ms']['ocr'] = int((time.time() - t0) * 1000)
                     except Exception as ocr_error:
-                        results['warnings'].append(
-                            f'OCR unavailable ({ocr_error}). Used digital text extraction instead.'
-                        )
-                        text_extractor = TextExtractor(filepath)
-                        t0 = time.time()
-                        results['extractions']['text'] = text_extractor.extract_all(
-                            page_from=page_from,
-                            page_to=page_to,
-                        )
-                        results['timing_ms']['text'] = int((time.time() - t0) * 1000)
+                        if app.config['OCR_ENGINE'] == 'ai' and app.config['OCR_ENGINE_FALLBACK'] == 'tesseract':
+                            results['warnings'].append(f'AI OCR unavailable ({ocr_error}). Used Tesseract OCR instead.')
+                            ocr_extractor = OCRExtractor(filepath)
+                            results['extractions']['text'] = ocr_extractor.extract_text_ocr(
+                                dpi=options['ocr_dpi'],
+                                page_from=page_from,
+                                page_to=page_to,
+                                page_timeout=app.config['TESSERACT_PAGE_TIMEOUT'],
+                                tesseract_config=app.config['OCR_TESSERACT_CONFIG'],
+                                max_image_pixels=app.config['OCR_MAX_IMAGE_PIXELS'],
+                                progress_callback=update_ocr_progress,
+                            )
+                            results['warnings'].extend(results['extractions']['text'].get('warnings', []))
+                            results['timing_ms']['ocr'] = int((time.time() - t0) * 1000)
+                        else:
+                            results['warnings'].append(
+                                f'OCR unavailable ({ocr_error}). Used digital text extraction instead.'
+                            )
+                            text_extractor = TextExtractor(filepath)
+                            t0 = time.time()
+                            results['extractions']['text'] = text_extractor.extract_all(
+                                page_from=page_from,
+                                page_to=page_to,
+                            )
+                            results['timing_ms']['text'] = int((time.time() - t0) * 1000)
                 else:
                     text_extractor = TextExtractor(filepath)
                     t0 = time.time()
@@ -202,8 +233,14 @@ def _run_extraction(job_id, filepath, filename, options):
                 results['errors'].append({'stage': 'text', 'message': str(e)})
 
         try:
-            pages = results.get('extractions', {}).get('text', {}).get('pages', [])
-            if pages:
+            text_result = results.get('extractions', {}).get('text', {})
+            pages = text_result.get('pages', [])
+            ai_records = text_result.get('records', {})
+            if ai_records.get('records'):
+                JOBS[job_id]['message'] = 'Using AI parsed records'
+                results['extractions']['records'] = ai_records
+                results['timing_ms']['records'] = 0
+            elif pages:
                 JOBS[job_id]['message'] = 'Parsing records'
                 t0 = time.time()
                 results['extractions']['records'] = parse_elector_records(pages)

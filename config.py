@@ -28,6 +28,13 @@ class Config:
     OCR_MAX_PAGES = int(os.environ.get('OCR_MAX_PAGES', '25'))
     OCR_MAX_IMAGE_PIXELS = int(os.environ.get('OCR_MAX_IMAGE_PIXELS', '6000000'))
     OCR_TESSERACT_CONFIG = os.environ.get('OCR_TESSERACT_CONFIG', '--oem 1 --psm 6')
+    OCR_ENGINE = os.environ.get('OCR_ENGINE', 'tesseract').lower()
+    OCR_ENGINE_FALLBACK = os.environ.get('OCR_ENGINE_FALLBACK', 'tesseract').lower()
+    AI_OCR_PROVIDER = os.environ.get('AI_OCR_PROVIDER', 'gemini').lower()
+    GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
+    GEMINI_MODEL = os.environ.get('GEMINI_MODEL', 'gemini-2.5-flash')
+    AI_OCR_DPI = int(os.environ.get('AI_OCR_DPI', '120'))
+    AI_OCR_MAX_IMAGE_PIXELS = int(os.environ.get('AI_OCR_MAX_IMAGE_PIXELS', '4000000'))
 
     # Create upload folder if it doesn't exist. Results are stored in Supabase.
     os.makedirs(UPLOAD_FOLDER, exist_ok=True)
