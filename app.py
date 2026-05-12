@@ -141,11 +141,20 @@ def _run_extraction(job_id, filepath, filename, options):
                     ocr_extractor = OCRExtractor(filepath)
                     t0 = time.time()
                     try:
+                        def update_ocr_progress(page_num, document_pages):
+                            if document_pages:
+                                JOBS[job_id]['message'] = f'OCR page {page_num} of {document_pages}'
+                            else:
+                                JOBS[job_id]['message'] = f'OCR page {page_num}'
+
                         results['extractions']['text'] = ocr_extractor.extract_text_ocr(
                             dpi=options['ocr_dpi'],
                             page_from=page_from,
                             page_to=page_to,
+                            page_timeout=app.config['TESSERACT_PAGE_TIMEOUT'],
+                            progress_callback=update_ocr_progress,
                         )
+                        results['warnings'].extend(results['extractions']['text'].get('warnings', []))
                         results['timing_ms']['ocr'] = int((time.time() - t0) * 1000)
                     except Exception as ocr_error:
                         results['warnings'].append(

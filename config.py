@@ -24,6 +24,7 @@ class Config:
     
     # Tesseract: Linux path on Render, Windows path locally
     TESSERACT_CMD = _default_tesseract_cmd()
+    TESSERACT_PAGE_TIMEOUT = int(os.environ.get('TESSERACT_PAGE_TIMEOUT', '90'))
 
     # Create upload folder if it doesn't exist. Results are stored in Supabase.
     os.makedirs(UPLOAD_FOLDER, exist_ok=True)
