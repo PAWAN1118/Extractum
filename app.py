@@ -30,13 +30,19 @@ SUPABASE = SupabaseStore()
 @app.route('/check')
 def check():
     import subprocess
+    import pytesseract
     try:
         result = subprocess.run(['which', 'tesseract'], capture_output=True, text=True)
         version = subprocess.run(['tesseract', '--version'], capture_output=True, text=True)
         return jsonify({
             'tesseract_path': result.stdout.strip(),
             'version': version.stdout.strip(),
-            'pytesseract_cmd': pytesseract.pytesseract.tesseract_cmd
+            'pytesseract_cmd': pytesseract.pytesseract.tesseract_cmd,
+            'ocr_engine': app.config['OCR_ENGINE'],
+            'ocr_engine_fallback': app.config['OCR_ENGINE_FALLBACK'],
+            'ai_ocr_provider': app.config['AI_OCR_PROVIDER'],
+            'gemini_model': app.config['GEMINI_MODEL'],
+            'gemini_api_key_configured': bool(app.config['GEMINI_API_KEY']),
         })
     except Exception as e:
         return jsonify({'error': str(e)})
@@ -149,6 +155,7 @@ def _run_extraction(job_id, filepath, filename, options):
             total_pages = metadata.get('total_pages', 0) or 1
             page_from, page_to, range_warning = _limit_ocr_range(page_from, page_to, total_pages)
             results['page_range'] = {'from': page_from, 'to': page_to}
+            results['warnings'].append(f"OCR engine: {app.config['OCR_ENGINE']}")
             if range_warning:
                 results['warnings'].append(range_warning)
 
@@ -206,16 +213,7 @@ def _run_extraction(job_id, filepath, filename, options):
                             results['warnings'].extend(results['extractions']['text'].get('warnings', []))
                             results['timing_ms']['ocr'] = int((time.time() - t0) * 1000)
                         else:
-                            results['warnings'].append(
-                                f'OCR unavailable ({ocr_error}). Used digital text extraction instead.'
-                            )
-                            text_extractor = TextExtractor(filepath)
-                            t0 = time.time()
-                            results['extractions']['text'] = text_extractor.extract_all(
-                                page_from=page_from,
-                                page_to=page_to,
-                            )
-                            results['timing_ms']['text'] = int((time.time() - t0) * 1000)
+                            raise RuntimeError(f"OCR engine '{app.config['OCR_ENGINE']}' failed: {ocr_error}") from ocr_error
                 else:
                     text_extractor = TextExtractor(filepath)
                     t0 = time.time()
