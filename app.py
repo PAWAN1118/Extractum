@@ -211,6 +211,44 @@ def _run_extraction(job_id, filepath, filename, options):
                                 retry_backoff_seconds=app.config['GEMINI_RETRY_BACKOFF_SECONDS'],
                                 api_key=app.config['GEMINI_API_KEY'],
                             )
+                            text_pages = results['extractions']['text'].get('pages', [])
+                            failed_pages = [
+                                int(page.get('page'))
+                                for page in text_pages
+                                if int(page.get('page') or 0) > 0 and int(page.get('char_count') or 0) == 0
+                            ]
+                            if failed_pages:
+                                def update_recovery_progress(page_num, index, total):
+                                    JOBS[job_id]['message'] = f'AI vision recovery page {page_num} ({index} of {total})'
+
+                                recovery = ai_extractor.recover_pages_with_vision(
+                                    failed_pages,
+                                    dpi=app.config['AI_OCR_DPI'],
+                                    max_image_pixels=app.config['AI_OCR_MAX_IMAGE_PIXELS'],
+                                    progress_callback=update_recovery_progress,
+                                )
+                                recovered_by_page = {
+                                    int(page.get('page')): page
+                                    for page in recovery.get('pages', [])
+                                    if page.get('text')
+                                }
+                                if recovered_by_page:
+                                    for page in text_pages:
+                                        recovered = recovered_by_page.get(int(page.get('page') or 0))
+                                        if recovered:
+                                            page['text'] = recovered.get('text', '')
+                                            page['char_count'] = len(page['text'])
+                                            page['ai_recovered'] = True
+                                    recovered_numbers = set(recovered_by_page)
+                                    results['extractions']['text']['warnings'] = [
+                                        warning
+                                        for warning in results['extractions']['text'].get('warnings', [])
+                                        if not any(f'page {page_num}' in warning for page_num in recovered_numbers)
+                                    ]
+                                    results['warnings'].append(
+                                        f"AI vision recovered pages {', '.join(str(page) for page in sorted(recovered_numbers))} after OCR timeout."
+                                    )
+                                results['warnings'].extend(recovery.get('warnings', []))
 
                             def update_structure_progress(page_num, index, total):
                                 JOBS[job_id]['message'] = f'Structuring page {page_num} ({index} of {total})'

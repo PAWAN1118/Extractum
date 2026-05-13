@@ -50,8 +50,8 @@ const presets = [
   {
     id: "scan",
     name: "Scanned PDF",
-    detail: "OCR first 10 pages at fast quality.",
-    options: { ...defaultOptions, use_ocr: true, page_to: "10" },
+    detail: "OCR all pages and structure elector records.",
+    options: { ...defaultOptions, use_ocr: true, page_from: "", page_to: "" },
   },
   {
     id: "deep",
@@ -240,7 +240,7 @@ function App() {
     setOptions((current) => ({
       ...current,
       [key]: value,
-      ...(key === "use_ocr" && value ? { extract_text: true } : {}),
+      ...(key === "use_ocr" && value ? { extract_text: true, page_from: "", page_to: "" } : {}),
     }));
   }
 

@@ -135,6 +135,33 @@ class AIOCRExtractor:
 
         return {"total_records": len(all_records), "records": all_records, "warnings": warnings}
 
+    def recover_pages_with_vision(
+        self,
+        page_numbers: List[int],
+        dpi: int = 120,
+        max_image_pixels: int = 4_000_000,
+        progress_callback: Callable[[int, int, int], None] | None = None,
+    ) -> Dict:
+        pages = []
+        warnings = []
+        page_set = {int(page) for page in page_numbers}
+        for index, page_num in enumerate(sorted(page_set), start=1):
+            if progress_callback:
+                progress_callback(page_num, index, len(page_set))
+            try:
+                result = self.extract_text_ai(
+                    dpi=dpi,
+                    page_from=page_num,
+                    page_to=page_num,
+                    max_image_pixels=max_image_pixels,
+                )
+                pages.extend(result.get("pages", []))
+                warnings.extend(result.get("warnings", []))
+            except Exception as error:
+                warnings.append(f"AI vision recovery failed page {page_num}: {error}")
+
+        return {"pages": pages, "warnings": warnings}
+
     def _structure_page_text_with_gemini(self, text: str, page_num: int) -> Dict:
         prompt = (
             "You are converting raw OCR text from an Indian electoral roll page into structured voter records. "
