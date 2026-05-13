@@ -106,10 +106,13 @@ def _extraction_options(form):
 
 
 def _limit_ocr_range(page_from, page_to, total_pages):
-    max_pages = max(1, int(app.config.get('OCR_MAX_PAGES', 25)))
+    max_pages = int(app.config.get('OCR_MAX_PAGES', 0))
     start = max(1, int(page_from)) if page_from else 1
     requested_end = min(total_pages, int(page_to)) if page_to else total_pages
     requested_end = max(start, requested_end)
+    if max_pages <= 0:
+        return start, requested_end, None
+
     capped_end = min(requested_end, start + max_pages - 1)
 
     warning = None
@@ -157,7 +160,6 @@ def _run_extraction(job_id, filepath, filename, options):
             total_pages = metadata.get('total_pages', 0) or 1
             page_from, page_to, range_warning = _limit_ocr_range(page_from, page_to, total_pages)
             results['page_range'] = {'from': page_from, 'to': page_to}
-            results['warnings'].append(f"OCR engine: {app.config['OCR_ENGINE']}")
             if range_warning:
                 results['warnings'].append(range_warning)
 
@@ -189,6 +191,35 @@ def _run_extraction(job_id, filepath, filename, options):
                                 max_image_pixels=app.config['AI_OCR_MAX_IMAGE_PIXELS'],
                                 progress_callback=update_ocr_progress,
                             )
+                        elif app.config['OCR_ENGINE'] == 'hybrid':
+                            ocr_extractor = OCRExtractor(filepath)
+                            results['extractions']['text'] = ocr_extractor.extract_text_ocr(
+                                dpi=options['ocr_dpi'],
+                                page_from=page_from,
+                                page_to=page_to,
+                                page_timeout=app.config['TESSERACT_PAGE_TIMEOUT'],
+                                tesseract_config=app.config['OCR_TESSERACT_CONFIG'],
+                                max_image_pixels=app.config['OCR_MAX_IMAGE_PIXELS'],
+                                progress_callback=update_ocr_progress,
+                            )
+                            ai_extractor = AIOCRExtractor(
+                                filepath,
+                                provider=app.config['AI_OCR_PROVIDER'],
+                                model=app.config['GEMINI_MODEL'],
+                                fallback_models=app.config['GEMINI_FALLBACK_MODELS'],
+                                max_retries=app.config['GEMINI_MAX_RETRIES'],
+                                retry_backoff_seconds=app.config['GEMINI_RETRY_BACKOFF_SECONDS'],
+                                api_key=app.config['GEMINI_API_KEY'],
+                            )
+
+                            def update_structure_progress(page_num, index, total):
+                                JOBS[job_id]['message'] = f'Structuring page {page_num} ({index} of {total})'
+
+                            results['extractions']['text']['records'] = ai_extractor.structure_records_from_text(
+                                results['extractions']['text'].get('pages', []),
+                                progress_callback=update_structure_progress,
+                            )
+                            results['warnings'].extend(results['extractions']['text']['records'].get('warnings', []))
                         else:
                             ocr_extractor = OCRExtractor(filepath)
                             results['extractions']['text'] = ocr_extractor.extract_text_ocr(

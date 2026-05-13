@@ -25,17 +25,17 @@ class Config:
     # Tesseract: Linux path on Render, Windows path locally
     TESSERACT_CMD = _default_tesseract_cmd()
     TESSERACT_PAGE_TIMEOUT = int(os.environ.get('TESSERACT_PAGE_TIMEOUT', '90'))
-    OCR_MAX_PAGES = int(os.environ.get('OCR_MAX_PAGES', '25'))
+    OCR_MAX_PAGES = int(os.environ.get('OCR_MAX_PAGES', '0'))
     OCR_MAX_IMAGE_PIXELS = int(os.environ.get('OCR_MAX_IMAGE_PIXELS', '6000000'))
     OCR_TESSERACT_CONFIG = os.environ.get('OCR_TESSERACT_CONFIG', '--oem 1 --psm 6')
     OCR_ENGINE = os.environ.get('OCR_ENGINE', 'ai').lower()
     OCR_ENGINE_FALLBACK = os.environ.get('OCR_ENGINE_FALLBACK', 'none').lower()
     AI_OCR_PROVIDER = os.environ.get('AI_OCR_PROVIDER', 'gemini').lower()
     GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
-    GEMINI_MODEL = os.environ.get('GEMINI_MODEL', 'gemini-2.5-flash')
+    GEMINI_MODEL = os.environ.get('GEMINI_MODEL', 'gemini-2.5-flash-lite')
     GEMINI_FALLBACK_MODELS = [
         model.strip()
-        for model in os.environ.get('GEMINI_FALLBACK_MODELS', 'gemini-2.0-flash,gemini-1.5-flash').split(',')
+        for model in os.environ.get('GEMINI_FALLBACK_MODELS', 'gemini-2.0-flash-lite,gemini-2.0-flash,gemini-2.5-flash').split(',')
         if model.strip()
     ]
     GEMINI_MAX_RETRIES = int(os.environ.get('GEMINI_MAX_RETRIES', '4'))

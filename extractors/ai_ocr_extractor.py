@@ -106,6 +106,54 @@ class AIOCRExtractor:
         image.save(buffer, format="JPEG", quality=82, optimize=True)
         return base64.b64encode(buffer.getvalue()).decode("ascii")
 
+    def structure_records_from_text(
+        self,
+        pages: List[Dict],
+        progress_callback: Callable[[int, int], None] | None = None,
+    ) -> Dict:
+        if self.provider != "gemini":
+            raise RuntimeError(f"Unsupported AI OCR provider: {self.provider}")
+        if not self.api_key:
+            raise RuntimeError("GEMINI_API_KEY is not configured")
+
+        all_records: List[Dict] = []
+        warnings = []
+        total = len(pages)
+        for index, page in enumerate(pages, start=1):
+            page_num = int(page.get("page") or index)
+            text = str(page.get("text") or "")
+            if progress_callback:
+                progress_callback(page_num, index, total)
+            if not text.strip():
+                continue
+
+            try:
+                parsed = self._structure_page_text_with_gemini(text, page_num)
+                all_records.extend(self._clean_records(parsed.get("records") or [], page_num))
+            except Exception as error:
+                warnings.append(f"AI structuring skipped page {page_num}: {error}")
+
+        return {"total_records": len(all_records), "records": all_records, "warnings": warnings}
+
+    def _structure_page_text_with_gemini(self, text: str, page_num: int) -> Dict:
+        prompt = (
+            "You are converting raw OCR text from an Indian electoral roll page into structured voter records. "
+            "Extract every voter/elector entry that is present in the text. "
+            "Return valid JSON only, no markdown, with this exact schema: "
+            '{"records":[{"serial_no":null,"epic_id":"","name":"","relation_type":"",'
+            '"relation_name":"","house_number":"","age":null,"gender":""}]}. '
+            "Do not invent missing fields; use null for missing numbers and empty string for missing text. "
+            f"Page number: {page_num}\n\nRAW OCR TEXT:\n{text[:45000]}"
+        )
+        body = {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {
+                "temperature": 0,
+                "response_mime_type": "application/json",
+            },
+        }
+        return self._request_with_model_fallback(body)
+
     def _extract_page_with_gemini(self, image_b64: str, page_num: int) -> Dict:
         prompt = (
             "You are extracting data from a scanned Indian electoral roll PDF page. "
@@ -130,6 +178,9 @@ class AIOCRExtractor:
                 "response_mime_type": "application/json",
             },
         }
+        return self._request_with_model_fallback(body)
+
+    def _request_with_model_fallback(self, body: Dict) -> Dict:
         models = [self.model, *self.fallback_models]
         last_error = None
         for model in models:
@@ -137,6 +188,8 @@ class AIOCRExtractor:
                 return self._request_gemini_model(model, body)
             except RuntimeError as error:
                 last_error = error
+                if "Gemini API error 404" in str(error):
+                    continue
                 if "Gemini API error 503" not in str(error) and "Gemini API error 429" not in str(error):
                     raise
 
