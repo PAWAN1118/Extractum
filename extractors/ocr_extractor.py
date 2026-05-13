@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Callable, Dict, Iterator, Tuple
 
 class OCRExtractor:
@@ -218,6 +219,95 @@ class OCRExtractor:
             'selected_range': {'from': start or 1, 'to': end or start or 1, 'document_pages': total_pages},
             'warnings': warnings,
             'pages': ocr_data
+        }
+
+    def extract_text_ocr_parallel(
+        self,
+        dpi=300,
+        page_from: int | None = None,
+        page_to: int | None = None,
+        page_timeout: int = 90,
+        tesseract_config: str = "--oem 1 --psm 6",
+        max_image_pixels: int = 6_000_000,
+        workers: int = 2,
+        progress_callback: Callable[[int, int | None], None] | None = None,
+    ) -> Dict:
+        import PyPDF2
+
+        with open(self.pdf_path, "rb") as file:
+            total_pages = len(PyPDF2.PdfReader(file).pages)
+
+        start, end = self._page_bounds(total_pages, page_from, page_to)
+        page_numbers = list(range(start, end + 1))
+        max_workers = max(1, min(int(workers), len(page_numbers)))
+
+        if max_workers <= 1:
+            return self.extract_text_ocr(
+                dpi=dpi,
+                page_from=page_from,
+                page_to=page_to,
+                page_timeout=page_timeout,
+                tesseract_config=tesseract_config,
+                max_image_pixels=max_image_pixels,
+                progress_callback=progress_callback,
+            )
+
+        pages = []
+        warnings = []
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {
+                executor.submit(
+                    self._ocr_single_page,
+                    page_num,
+                    dpi,
+                    page_timeout,
+                    tesseract_config,
+                    max_image_pixels,
+                    total_pages,
+                ): page_num
+                for page_num in page_numbers
+            }
+
+            for future in as_completed(futures):
+                page_num = futures[future]
+                if progress_callback:
+                    progress_callback(page_num, total_pages)
+                result = future.result()
+                pages.append(result["page"])
+                warnings.extend(result["warnings"])
+
+        pages.sort(key=lambda page: page["page"])
+        return {
+            'method': f'OCR (Tesseract parallel x{max_workers})',
+            'total_pages': len(pages),
+            'selected_range': {'from': start, 'to': end, 'document_pages': total_pages},
+            'warnings': warnings,
+            'pages': pages
+        }
+
+    def _ocr_single_page(self, page_num, dpi, page_timeout, tesseract_config, max_image_pixels, total_pages):
+        pytesseract = self._configure_tesseract()
+        warnings = []
+        text = ""
+
+        for rendered_page, image, _document_pages in self._iter_page_images(dpi=dpi, page_from=page_num, page_to=page_num):
+            prepared = self._prepare_for_tesseract(image, max_pixels=max_image_pixels)
+            try:
+                text = pytesseract.image_to_string(
+                    prepared,
+                    config=tesseract_config,
+                    timeout=page_timeout,
+                )
+            except RuntimeError as error:
+                warnings.append(f"OCR skipped page {rendered_page}: {error}")
+            finally:
+                prepared.close()
+            break
+
+        return {
+            "page": {"page": page_num, "text": text, "char_count": len(text)},
+            "warnings": warnings,
+            "document_pages": total_pages,
         }
     
     def extract_with_config(

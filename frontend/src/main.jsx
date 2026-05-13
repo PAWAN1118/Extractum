@@ -283,7 +283,7 @@ function App() {
 
     setLoading(true);
     setProgressStep(0);
-    setStatus(options.use_ocr ? "Starting OCR job. Limited pages are much faster..." : "Starting extraction job...");
+    setStatus(options.use_ocr ? "Starting full OCR job. Keep this tab open while pages are processed..." : "Starting extraction job...");
 
     let stage = 0;
     const progressTimer = window.setInterval(() => {
@@ -299,7 +299,7 @@ function App() {
       const data = await readJsonResponse(response);
       if (!response.ok) throw new Error(data.error || "Extraction failed");
 
-      const finalData = data.job_id ? await pollJob(data.job_id) : data;
+      const finalData = data.job_id ? await pollJob(data.job_id, options.use_ocr) : data;
       setResults(finalData);
       setActiveTab("visuals");
       setProgressStep(progressStages.length - 1);
@@ -313,22 +313,32 @@ function App() {
     }
   }
 
-  async function pollJob(jobId) {
+  async function pollJob(jobId, allowLongRun = false) {
     const started = Date.now();
+    const maxWaitMs = allowLongRun ? 4 * 60 * 60 * 1000 : 20 * 60 * 1000;
+    let lastMessage = "";
 
-    while (Date.now() - started < 20 * 60 * 1000) {
+    while (Date.now() - started < maxWaitMs) {
       const response = await fetch(`/jobs/${encodeURIComponent(jobId)}`);
       const job = await readJsonResponse(response);
       if (!response.ok) throw new Error(job.error || "Could not read extraction job");
 
-      if (job.message) setStatus(job.message);
+      if (job.message) {
+        lastMessage = job.message;
+        const minutes = Math.floor((Date.now() - started) / 60000);
+        setStatus(allowLongRun && minutes >= 1 ? `${job.message} - ${minutes} min elapsed` : job.message);
+      }
       if (job.status === "complete") return job.result;
       if (job.status === "failed") throw new Error(job.error || "Extraction failed");
 
-      await new Promise((resolve) => window.setTimeout(resolve, 1200));
+      await new Promise((resolve) => window.setTimeout(resolve, allowLongRun ? 2500 : 1200));
     }
 
-    throw new Error("Extraction is taking longer than expected. Try a smaller page range or disable OCR/images.");
+    throw new Error(
+      allowLongRun
+        ? `OCR is still running after 4 hours${lastMessage ? ` (${lastMessage})` : ""}. Try a smaller page range.`
+        : "Extraction is taking longer than expected. Try a smaller page range or disable OCR/images."
+    );
   }
 
   async function readJsonResponse(response) {

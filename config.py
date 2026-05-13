@@ -25,6 +25,7 @@ class Config:
     # Tesseract: Linux path on Render, Windows path locally
     TESSERACT_CMD = _default_tesseract_cmd()
     TESSERACT_PAGE_TIMEOUT = int(os.environ.get('TESSERACT_PAGE_TIMEOUT', '90'))
+    OCR_PAGE_WORKERS = int(os.environ.get('OCR_PAGE_WORKERS', '2'))
     OCR_MAX_PAGES = int(os.environ.get('OCR_MAX_PAGES', '0'))
     OCR_MAX_IMAGE_PIXELS = int(os.environ.get('OCR_MAX_IMAGE_PIXELS', '6000000'))
     OCR_TESSERACT_CONFIG = os.environ.get('OCR_TESSERACT_CONFIG', '--oem 1 --psm 6')
