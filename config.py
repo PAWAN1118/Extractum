@@ -26,7 +26,7 @@ class Config:
     TESSERACT_CMD = _default_tesseract_cmd()
     TESSERACT_PAGE_TIMEOUT = int(os.environ.get('TESSERACT_PAGE_TIMEOUT', '90'))
     OCR_PAGE_WORKERS = int(os.environ.get('OCR_PAGE_WORKERS', '2'))
-    OCR_MAX_PAGES = int(os.environ.get('OCR_MAX_PAGES', '0'))
+    OCR_MAX_PAGES = int(os.environ.get('OCR_MAX_PAGES', '10'))
     OCR_MAX_IMAGE_PIXELS = int(os.environ.get('OCR_MAX_IMAGE_PIXELS', '6000000'))
     OCR_TESSERACT_CONFIG = os.environ.get('OCR_TESSERACT_CONFIG', '--oem 1 --psm 6')
     OCR_ENGINE = os.environ.get('OCR_ENGINE', 'ai').lower()
@@ -43,6 +43,10 @@ class Config:
     GEMINI_RETRY_BACKOFF_SECONDS = float(os.environ.get('GEMINI_RETRY_BACKOFF_SECONDS', '2'))
     AI_OCR_DPI = int(os.environ.get('AI_OCR_DPI', '120'))
     AI_OCR_MAX_IMAGE_PIXELS = int(os.environ.get('AI_OCR_MAX_IMAGE_PIXELS', '4000000'))
+    AI_VISION_RECOVERY = os.environ.get('AI_VISION_RECOVERY', 'off').lower()
+    AI_VISION_RECOVERY_MAX_PAGES = int(os.environ.get('AI_VISION_RECOVERY_MAX_PAGES', '3'))
+    AI_STRUCTURE_MAX_PAGES = int(os.environ.get('AI_STRUCTURE_MAX_PAGES', '10'))
+    AI_STRUCTURE_MIN_CHARS = int(os.environ.get('AI_STRUCTURE_MIN_CHARS', '120'))
 
     # Create upload folder if it doesn't exist. Results are stored in Supabase.
     os.makedirs(UPLOAD_FOLDER, exist_ok=True)

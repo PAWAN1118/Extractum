@@ -133,6 +133,7 @@ def _run_extraction(job_id, filepath, filename, options):
         'status': 'running',
         'filename': filename,
         'message': 'Reading metadata',
+        'requested_range': {'from': options['page_from'], 'to': options['page_to']},
         'result': None,
         'error': None,
     }
@@ -221,12 +222,25 @@ def _run_extraction(job_id, filepath, filename, options):
                                 for page in text_pages
                                 if int(page.get('page') or 0) > 0 and int(page.get('char_count') or 0) == 0
                             ]
-                            if failed_pages:
+                            recovery_mode = app.config['AI_VISION_RECOVERY']
+                            if recovery_mode == 'limited':
+                                recoverable_pages = failed_pages[:max(0, app.config['AI_VISION_RECOVERY_MAX_PAGES'])]
+                            elif recovery_mode == 'all':
+                                recoverable_pages = failed_pages
+                            else:
+                                recoverable_pages = []
+
+                            if failed_pages and not recoverable_pages:
+                                results['warnings'].append(
+                                    f"Skipped AI vision recovery for {len(failed_pages)} OCR-empty pages to keep extraction fast."
+                                )
+
+                            if recoverable_pages:
                                 def update_recovery_progress(page_num, index, total):
                                     JOBS[job_id]['message'] = f'AI vision recovery page {page_num} ({index} of {total})'
 
                                 recovery = ai_extractor.recover_pages_with_vision(
-                                    failed_pages,
+                                    recoverable_pages,
                                     dpi=app.config['AI_OCR_DPI'],
                                     max_image_pixels=app.config['AI_OCR_MAX_IMAGE_PIXELS'],
                                     progress_callback=update_recovery_progress,
@@ -259,6 +273,8 @@ def _run_extraction(job_id, filepath, filename, options):
 
                             results['extractions']['text']['records'] = ai_extractor.structure_records_from_text(
                                 results['extractions']['text'].get('pages', []),
+                                max_pages=app.config['AI_STRUCTURE_MAX_PAGES'],
+                                min_chars=app.config['AI_STRUCTURE_MIN_CHARS'],
                                 progress_callback=update_structure_progress,
                             )
                             results['warnings'].extend(results['extractions']['text']['records'].get('warnings', []))
@@ -378,6 +394,7 @@ def _run_extraction(job_id, filepath, filename, options):
             'status': 'complete',
             'filename': filename,
             'message': 'Extraction complete',
+            'requested_range': {'from': options['page_from'], 'to': options['page_to']},
             'result': results,
             'error': None,
         }
@@ -388,6 +405,7 @@ def _run_extraction(job_id, filepath, filename, options):
             'status': 'failed',
             'filename': filename,
             'message': 'Extraction failed',
+            'requested_range': {'from': options['page_from'], 'to': options['page_to']},
             'result': None,
             'error': str(exc),
         }
@@ -420,11 +438,17 @@ def upload_file():
             'status': 'queued',
             'filename': filename,
             'message': 'Queued for extraction',
+            'requested_range': {'from': options['page_from'], 'to': options['page_to']},
             'result': None,
             'error': None,
         }
         EXECUTOR.submit(_run_extraction, job_id, filepath, filename, options)
-        return jsonify({'job_id': job_id, 'status': 'queued', 'message': 'Extraction started'}), 202
+        return jsonify({
+            'job_id': job_id,
+            'status': 'queued',
+            'message': 'Extraction started',
+            'requested_range': {'from': options['page_from'], 'to': options['page_to']},
+        }), 202
     
     except Exception as e:
         traceback.print_exc()

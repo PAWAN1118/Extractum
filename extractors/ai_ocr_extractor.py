@@ -109,6 +109,8 @@ class AIOCRExtractor:
     def structure_records_from_text(
         self,
         pages: List[Dict],
+        max_pages: int = 10,
+        min_chars: int = 120,
         progress_callback: Callable[[int, int], None] | None = None,
     ) -> Dict:
         if self.provider != "gemini":
@@ -118,8 +120,27 @@ class AIOCRExtractor:
 
         all_records: List[Dict] = []
         warnings = []
-        total = len(pages)
-        for index, page in enumerate(pages, start=1):
+        candidate_pages = [
+            page for page in pages
+            if len(str(page.get("text") or "").strip()) >= min_chars
+        ]
+        if max_pages > 0:
+            skipped = max(0, len(candidate_pages) - max_pages)
+            candidate_pages = candidate_pages[:max_pages]
+        else:
+            skipped = 0
+
+        low_text_skipped = len(pages) - len([
+            page for page in pages
+            if len(str(page.get("text") or "").strip()) >= min_chars
+        ])
+        if low_text_skipped:
+            warnings.append(f"Skipped AI structuring for {low_text_skipped} low-text OCR pages.")
+        if skipped:
+            warnings.append(f"Skipped AI structuring for {skipped} pages to stay within free-tier quota.")
+
+        total = len(candidate_pages)
+        for index, page in enumerate(candidate_pages, start=1):
             page_num = int(page.get("page") or index)
             text = str(page.get("text") or "")
             if progress_callback:
@@ -217,6 +238,8 @@ class AIOCRExtractor:
                 last_error = error
                 if "Gemini API error 404" in str(error):
                     continue
+                if "Gemini API error 429" in str(error):
+                    raise
                 if "Gemini API error 503" not in str(error) and "Gemini API error 429" not in str(error):
                     raise
 

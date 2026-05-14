@@ -24,6 +24,13 @@ const progressStages = [
   "Preparing results",
 ];
 
+function parseNextRange(warnings = []) {
+  const text = warnings.join(" ");
+  const match = text.match(/next range to\s+(\d+)-(\d+)/i);
+  if (!match) return null;
+  return { from: match[1], to: match[2] };
+}
+
 const defaultOptions = {
   extract_text: true,
   extract_tables: false,
@@ -50,8 +57,8 @@ const presets = [
   {
     id: "scan",
     name: "Scanned PDF",
-    detail: "OCR all pages and structure elector records.",
-    options: { ...defaultOptions, use_ocr: true, page_from: "", page_to: "" },
+    detail: "OCR a safe page batch and structure elector records.",
+    options: { ...defaultOptions, use_ocr: true, page_from: "3", page_to: "12" },
   },
   {
     id: "deep",
@@ -220,7 +227,7 @@ function App() {
     if (options.use_ocr) {
       notes.push({
         title: hasRange ? "OCR range set" : "OCR needs a range",
-        detail: hasRange ? "Good. OCR is much faster with limited pages." : "Add From/To pages before OCR to avoid long waits.",
+        detail: hasRange ? "Good. OCR is much faster with limited pages." : "Add From/To pages before OCR to avoid Render timeouts.",
         tone: hasRange ? "good" : "warn",
       });
     } else {
@@ -240,7 +247,7 @@ function App() {
     setOptions((current) => ({
       ...current,
       [key]: value,
-      ...(key === "use_ocr" && value ? { extract_text: true, page_from: "", page_to: "" } : {}),
+      ...(key === "use_ocr" && value ? { extract_text: true, page_from: current.page_from || "3", page_to: current.page_to || "12" } : {}),
     }));
   }
 
@@ -283,7 +290,10 @@ function App() {
 
     setLoading(true);
     setProgressStep(0);
-    setStatus(options.use_ocr ? "Starting full OCR job. Keep this tab open while pages are processed..." : "Starting extraction job...");
+    const rangeLabel = options.page_from || options.page_to
+      ? `pages ${options.page_from || "1"}-${options.page_to || "end"}`
+      : "all pages";
+    setStatus(options.use_ocr ? `Starting OCR batch for ${rangeLabel}...` : "Starting extraction job...");
 
     let stage = 0;
     const progressTimer = window.setInterval(() => {
@@ -303,7 +313,13 @@ function App() {
       setResults(finalData);
       setActiveTab("visuals");
       setProgressStep(progressStages.length - 1);
-      setStatus("Extraction complete. Review results below or export data.");
+      const nextRange = parseNextRange(finalData.warnings || []);
+      if (nextRange) {
+        setOptions((current) => ({ ...current, page_from: nextRange.from, page_to: nextRange.to }));
+        setStatus(`Extraction complete. Next batch is ready: pages ${nextRange.from}-${nextRange.to}.`);
+      } else {
+        setStatus("Extraction complete. Review results below or export data.");
+      }
     } catch (error) {
       setStatus(error.message);
     } finally {
@@ -348,9 +364,12 @@ function App() {
     try {
       return JSON.parse(text);
     } catch {
+      const looksLikeHtml = /^\s*<!doctype html|^\s*<html/i.test(text);
       return {
         error: response.status === 413
           ? "File is too large for this server. Try fewer pages, split the PDF, or raise MAX_CONTENT_LENGTH."
+          : looksLikeHtml && response.status >= 500
+            ? `Server returned ${response.status}. Render likely restarted or timed out during OCR. Try a smaller page range.`
           : text.slice(0, 240),
       };
     }
